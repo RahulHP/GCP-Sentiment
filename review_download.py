@@ -1,17 +1,27 @@
+"""
+This script is used to:
+1. Download the gzipped JSON files to a Google Compute Engine VM from the source website.
+2. Unzip them to a temporary folder on the VM.
+3. Upload them to the Google Cloud Storage bucket.
+
+TODO: Check if we need to unzip them. ie. Check if pyspark can read the gzipped json files directly
+WISH: Check file length before downloading it and then create VM based on this file size to save costs.
+	Currently, one big VM is created which downloads all the files (from small ones to huge ones)
+
+"""
+
 import urllib
 import gzip
 from google.cloud import storage
+from CategoryGenerator import CategoryGenerator
+
 client = storage.Client()
 bucket = client.get_bucket('pysenti-data')
-src_url_file = bucket.get_blob('review-urls/reviews.txt')
-src_url_string = src_url_file.download_as_string()
-for src_url in src_url_string.split('\r\n'):
-	print src_url
 
-	src_file_name = src_url.split('/')[-1]
-	category = src_file_name.split('.')[0]
-	print(category)
-	urllib.urlretrieve(src_url, filename="/tmp/"+src_file_name)
-	with gzip.open('/tmp/'+src_file_name,'rb') as f:
-		file_blob = storage.Blob('reviews/'+category+'.json',bucket)
+categorygenerator = CategoryGenerator(bucket='pysenti-data',file_path='review-urls/reviews.txt')
+for category in categorygenerator:
+	print(category.name)
+	urllib.urlretrieve(category.download_url, filename="/tmp/"+category.name+'.json.gz')
+	with gzip.open('/tmp/'+category.name+'.json.gz','rb') as f:
+		file_blob = storage.Blob(category.reviews_downloaded_json,bucket)
 		file_blob.upload_from_file(f,content_type='application/json')
